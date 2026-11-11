@@ -1,16 +1,13 @@
 # Setrya Space Management Service
 
-Microservicio Go del bounded context **Space Management** de Sentrya. Este repositorio contiene únicamente este servicio; se creó desde el repositorio del microservicio, por lo que el código vive en la raíz y no dentro de una carpeta anidada `space-management/`.
-
-Administra espacios de hogares: propietario, nombre, descripción, ubicación, dimensiones y disponibilidad. IoT Monitoring conserva la propiedad de dispositivos, lecturas y alertas.
+Microservicio Go del bounded context **Space Management** de Sentrya. Administra espacios de hogares, disponibilidad, referencias a dispositivos vinculados y reseñas. IoT Monitoring conserva la propiedad operativa de los dispositivos, lecturas y alertas.
 
 ## Stack y organización
 
-- Go 1.27 y `net/http`, siguiendo el stack del servicio IoT Monitoring de referencia.
-- MySQL 8 con `database/sql` y el driver MySQL del mismo servicio de referencia.
-- Separación por capas: `internal/domain`, `internal/application`, `internal/interfaces/rest` e `internal/infrastructure/mysql`.
-- OpenAPI 3 en `api/openapi.yaml`, servido en `/openapi.yaml`.
-- Docker y Compose para ejecución local.
+- Go 1.27, `net/http` y MySQL 8 con `database/sql`.
+- Capas en `internal/domain`, `internal/application`, `internal/interfaces/rest` e `internal/infrastructure/mysql`.
+- OpenAPI 3 en `api/openapi.yaml`, disponible en `/openapi.yaml`.
+- Migración MySQL en `migrations/001_init.sql`.
 
 ## Ejecutar
 
@@ -21,47 +18,58 @@ docker compose up --build
 ```
 
 - API: `http://localhost:8081`
-- Salud: `GET http://localhost:8081/health`
-- OpenAPI: `http://localhost:8081/openapi.yaml`
-- MySQL expuesto en `localhost:3307` (ajustable con `SPACE_MYSQL_PORT`).
-
-Los datos iniciales usan el usuario/clave `sentrya` para el entorno local. No reutilizar esas credenciales fuera del desarrollo.
+- Salud: `GET /health`
+- Especificación: `GET /openapi.yaml`
+- MySQL: `localhost:3307` (`SPACE_MYSQL_PORT` permite cambiarlo).
 
 ## API
 
 | Método | Ruta | Función |
 |---|---|---|
 | `POST` | `/api/v1/spaces` | Crea un espacio y genera su UUID. |
-| `GET` | `/api/v1/spaces/{spaceId}` | Obtiene el espacio. IoT puede usar esta respuesta para confirmar existencia y estado. |
+| `GET` | `/api/v1/spaces/{spaceId}` | Obtiene detalle, propietario y estado del espacio. |
 | `GET` | `/api/v1/owners/{ownerId}/spaces` | Lista espacios del propietario. |
 | `PUT` | `/api/v1/spaces/{spaceId}` | Actualiza nombre, descripción, ubicación y dimensiones. |
-| `PATCH` | `/api/v1/spaces/{spaceId}/availability` | Publica o pausa disponibilidad con `{ "active": true|false }`. |
-| `GET` | `/api/v1/projects/{projectId}` | Alias de compatibilidad para Payment Management; consulta por UUID y responde 404 si no existe. |
+| `DELETE` | `/api/v1/spaces/{spaceId}` | Da de baja lógicamente el espacio como no disponible. |
+| `PATCH` | `/api/v1/spaces/{spaceId}/pause` | Pausa disponibilidad (ruta del informe). |
+| `PATCH` | `/api/v1/spaces/{spaceId}/availability` | Publica/pausa usando `{ "active": true|false }`. |
+| `POST` | `/api/v1/spaces/{spaceId}/devices` | Registra el vínculo con un `deviceId` existente. |
+| `GET` | `/api/v1/spaces/{spaceId}/devices` | Lista vínculos del espacio. |
+| `PATCH` | `/api/v1/spaces/{spaceId}/devices/{deviceId}/deactivate` | Desactiva el vínculo en Space Management. |
+| `POST` | `/api/v1/spaces/{spaceId}/reviews` | Registra una reseña con rating de 1 a 5. Solo admite espacios activos. |
+| `GET` | `/api/v1/spaces/{spaceId}/reviews` | Lista reseñas del espacio. |
+| `GET` | `/api/v1/projects/{projectId}` | Alias compatible con el cliente de Payment Management para validar existencia. |
 
-Ejemplo para crear:
+Ejemplo para crear un espacio:
 
 ```json
 {
   "ownerId": "UUID-del-usuario-IAM",
   "name": "Sala principal",
   "description": "Espacio monitoreado",
-  "location": {
-    "address": "Av. Ejemplo 123",
-    "district": "Miraflores",
-    "city": "Lima"
-  },
+  "location": { "address": "Av. Ejemplo 123", "district": "Miraflores", "city": "Lima" },
   "dimensions": { "width": 4.5, "length": 5.0 }
 }
 ```
 
-El campo `ownerId` debe ser el identificador acordado con IAM. El ID del espacio lo genera el servicio.
+Ejemplo para vincular un dispositivo IoT ya registrado:
 
-## Integración entre contextos
+```json
+{ "deviceId": "UUID-del-dispositivo", "deviceType": "temperature" }
+```
 
-- **Payment Management:** el cliente HTTP de referencia consulta `GET /api/v1/projects/{projectId}`. Se expone ese alias y usa UUID, como espera el contrato de pagos.
-- **IoT Monitoring:** consulta `GET /api/v1/spaces/{spaceId}`. Un espacio inexistente responde 404; el JSON incluye propietario y disponibilidad.
-- **IAM:** los ZIP proporcionados muestran JWT en los servicios consumidores, pero no definen un contrato de middleware compartido para este servicio. La validación del token y la derivación del propietario deben hacerse en el gateway o acordarse antes de exponer endpoints a clientes. El servicio no acepta un `ownerId` como prueba de autorización.
-- **IoT Edge:** publica lecturas por MQTT hacia IoT Monitoring y no llama directamente a Space Management; no se agrega una dependencia innecesaria.
+Ejemplo de reseña:
+
+```json
+{ "authorId": "UUID-del-usuario-IAM", "rating": 5, "comment": "Instalación ordenada" }
+```
+
+## Límites entre contextos
+
+- Payment Management consulta `/api/v1/projects/{projectId}`, que devuelve el espacio si existe y 404 si no.
+- IoT Monitoring consulta `/api/v1/spaces/{spaceId}` y administra el registro/activación del dispositivo y sus datos de monitoreo. Este servicio solo guarda la asociación local al espacio; la integración para validar que `deviceId` exista en IoT requiere acordar el endpoint de servicio a servicio.
+- IoT Edge publica lecturas por MQTT a IoT Monitoring; no necesita conectarse a Space Management.
+- IAM debe validar JWT y proveer una identidad confiable al propietario/autor. El servicio aún no implementa autenticación directa: `ownerId` y `authorId` del JSON no son prueba de autorización. Mantener detrás del API Gateway hasta cerrar ese contrato.
 
 ## Configuración
 
@@ -72,4 +80,5 @@ El campo `ownerId` debe ser el identificador acordado con IAM. El ID del espacio
 | `SPACE_HTTP_PORT` | `8081` | Puerto HTTP publicado por Compose. |
 | `SPACE_MYSQL_PORT` | `3307` | Puerto MySQL publicado por Compose. |
 
-`migrations/001_init.sql` crea la tabla al iniciar un volumen MySQL nuevo. Para una base existente, aplícala una sola vez antes de iniciar el servicio.
+La migración se monta para ejecutarse al inicializar un volumen nuevo de MySQL. Si ya existe el volumen, aplica `migrations/001_init.sql` manualmente antes de usar las nuevas tablas.
+

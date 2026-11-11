@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Sentrya Space Management API
   version: 1.0.0
-  description: Gestión de espacios para Sentrya.
+  description: Gestión de espacios, vínculos de dispositivos y reseñas.
 servers:
   - url: /api/v1
 paths:
@@ -16,11 +16,7 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/SpaceInput' }
       responses:
-        '201':
-          description: Espacio creado
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Space' }
+        '201': { description: Espacio creado }
         '400': { description: Datos inválidos }
   /spaces/{spaceId}:
     parameters:
@@ -46,6 +42,21 @@ paths:
       responses:
         '200': { description: Espacio actualizado }
         '400': { description: Datos inválidos }
+        '404': { description: Espacio no encontrado }
+    delete:
+      summary: Dar de baja un espacio
+      operationId: deactivateSpace
+      responses:
+        '204': { description: Espacio dado de baja }
+        '404': { description: Espacio no encontrado }
+  /spaces/{spaceId}/pause:
+    parameters:
+      - $ref: '#/components/parameters/SpaceId'
+    patch:
+      summary: Pausar disponibilidad del espacio
+      operationId: pauseSpace
+      responses:
+        '204': { description: Espacio pausado }
         '404': { description: Espacio no encontrado }
   /spaces/{spaceId}/availability:
     parameters:
@@ -82,9 +93,87 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Space' }
+  /spaces/{spaceId}/devices:
+    parameters:
+      - $ref: '#/components/parameters/SpaceId'
+    post:
+      summary: Vincular dispositivo IoT registrado
+      operationId: linkDeviceToSpace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceId, deviceType]
+              properties:
+                deviceId: { type: string, format: uuid }
+                deviceType: { type: string }
+      responses:
+        '201': { description: Dispositivo vinculado }
+        '409': { description: El dispositivo ya está vinculado o no pudo vincularse }
+    get:
+      summary: Listar dispositivos vinculados
+      operationId: listSpaceDevices
+      responses:
+        '200':
+          description: Vínculos del espacio
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LinkedIoTDevice' }
+        '404': { description: Espacio no encontrado }
+  /spaces/{spaceId}/devices/{deviceId}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/SpaceId'
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      summary: Desactivar vínculo de dispositivo
+      operationId: deactivateSpaceDevice
+      responses:
+        '204': { description: Vínculo desactivado }
+        '404': { description: Espacio o vínculo no encontrado }
+  /spaces/{spaceId}/reviews:
+    parameters:
+      - $ref: '#/components/parameters/SpaceId'
+    post:
+      summary: Crear reseña para espacio activo
+      operationId: addSpaceReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [authorId, rating]
+              properties:
+                authorId: { type: string }
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string }
+      responses:
+        '201': { description: Reseña creada }
+        '400': { description: Rating inválido }
+        '404': { description: Espacio no encontrado }
+        '409': { description: El espacio no está activo }
+    get:
+      summary: Listar reseñas del espacio
+      operationId: listSpaceReviews
+      responses:
+        '200':
+          description: Reseñas encontradas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Review' }
+        '404': { description: Espacio no encontrado }
   /projects/{projectId}:
     get:
-      summary: Consultar espacio usando el contrato de Payment Management
+      summary: Validar referencia de proyecto para Payment Management
       operationId: getProjectCompatibility
       parameters:
         - name: projectId
@@ -92,7 +181,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
-        '200': { description: La referencia del proyecto/espacio existe }
+        '200': { description: La referencia existe }
         '404': { description: La referencia no existe }
 components:
   parameters:
@@ -131,6 +220,26 @@ components:
           required: [id, status, createdAt, updatedAt]
           properties:
             id: { type: string, format: uuid }
-            status: { type: string, enum: [active, paused] }
+            status: { type: string, enum: [active, paused, unavailable] }
             createdAt: { type: string, format: date-time }
             updatedAt: { type: string, format: date-time }
+    LinkedIoTDevice:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        spaceId: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        deviceType: { type: string }
+        status: { type: string, enum: [active, inactive] }
+        linkedAt: { type: string, format: date-time }
+    Review:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        spaceId: { type: string, format: uuid }
+        authorId: { type: string }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string }
+        createdAt: { type: string, format: date-time }
+
+

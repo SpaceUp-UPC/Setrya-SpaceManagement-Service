@@ -84,3 +84,15 @@ func (r Repository) ByOwner(ctx context.Context, ownerID string) ([]domain.Space
 	return spaces, rows.Err()
 }
 
+
+func (r Repository) Delete(ctx context.Context, id string) error {
+	result, err := r.DB.ExecContext(ctx, `
+		UPDATE spaces SET status = 'unavailable', updated_at = UTC_TIMESTAMP(6)
+		WHERE id = ?
+	`, id)
+	if err != nil { return err }
+	count, err := result.RowsAffected()
+	if err != nil { return err }
+	if count == 0 { return application.ErrNotFound }
+	return nil
+}

@@ -11,6 +11,7 @@ type Status string
 const (
 	StatusActive Status = "active"
 	StatusPaused Status = "paused"
+	StatusUnavailable Status = "unavailable"
 )
 
 type Location struct {
@@ -97,8 +98,15 @@ func (s *Space) Pause() {
 	s.UpdatedAt = time.Now().UTC()
 }
 
+func (s *Space) MarkUnavailable() {
+	s.Status = StatusUnavailable
+	s.UpdatedAt = time.Now().UTC()
+}
+
 func (s *Space) Publish() {
 	s.Status = StatusActive
 	s.UpdatedAt = time.Now().UTC()
 }
+
+
 

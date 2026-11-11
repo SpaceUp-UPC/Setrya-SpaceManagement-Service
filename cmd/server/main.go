@@ -35,7 +35,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	app := application.Service{Repo: mysqlrepo.Repository{DB: db}}
+	repository := mysqlrepo.Repository{DB: db}
+	app := application.Service{Spaces: repository, DevicesRepo: repository, ReviewsRepo: repository}
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/spaces", rest.Handler{App: app})
 	mux.Handle("/api/v1/spaces/", rest.Handler{App: app})
@@ -67,3 +68,4 @@ func main() {
 	log.Printf("Space Management listening on %s", address)
 	log.Fatal(server.ListenAndServe())
 }
+
