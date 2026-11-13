@@ -1,0 +1,15 @@
+# Go build outputs
+/bin/
+*.exe
+*.test
+*.out
+
+# Local environment and editor files
+.env
+.idea/
+.vscode/
+
+# Local databases and logs
+*.db
+*.sqlite
+*.log

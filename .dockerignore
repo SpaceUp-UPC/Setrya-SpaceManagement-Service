@@ -1,0 +1,19 @@
+# Git metadata
+.git
+.gitignore
+
+# Local configuration and IDE state
+.env
+.idea
+.vscode
+
+# Build output
+bin
+*.exe
+*.test
+*.out
+
+# Local data and logs
+*.db
+*.sqlite
+*.log
